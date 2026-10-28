@@ -1,9 +1,46 @@
+/* eslint-disable @next/next/no-img-element */
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, CalendarDays, Check, Clock3 } from "lucide-react";
-import { addDays, clock, dateLabel, money, today } from "@/lib/time";
+import {
+  ArrowRight,
+  CalendarDays,
+  CalendarSearch,
+  Check,
+  Clock3,
+  LoaderCircle,
+  Sparkles,
+  User,
+} from "lucide-react";
+import {
+  addDays,
+  clock,
+  dateLabel,
+  dayParts,
+  duration as formatDuration,
+  money,
+  today,
+  weekday,
+} from "@/lib/time";
 import { Feedback, request } from "./ui";
+type Slot = { startMin: number };
+const periods = [
+  { label: "Sabah", test: (m: number) => m < 720 },
+  { label: "Öğleden sonra", test: (m: number) => m >= 720 && m < 1020 },
+  { label: "Akşam", test: (m: number) => m >= 1020 },
+];
+async function fetchSlots(
+  params: Record<string, string>,
+  signal?: AbortSignal,
+): Promise<{ slots: Slot[]; closed: boolean }> {
+  const r = await fetch(`/api/slots?${new URLSearchParams(params)}`, {
+    signal,
+    cache: "no-store",
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error);
+  return data;
+}
 export function Booking({
   shopId,
   slug,
@@ -11,6 +48,8 @@ export function Booking({
   staff,
   loggedIn,
   initial,
+  closedDays = [],
+  windowDays = 30,
 }: {
   shopId: string;
   slug: string;
@@ -20,11 +59,15 @@ export function Booking({
     durationMinutes: number;
     price: string;
   }[];
-  staff: { id: string; name: string }[];
+  staff: { id: string; name: string; title?: string; photo?: string | null }[];
   loggedIn: boolean;
   initial: { service?: string; staff?: string; date?: string; time?: string };
+  closedDays?: number[];
+  windowDays?: number;
 }) {
   const router = useRouter();
+  const first = today();
+  const last = addDays(first, Math.max(1, windowDays) - 1);
   const [serviceId, setService] = useState(
     services.some((s) => s.id === initial.service)
       ? initial.service!
@@ -34,42 +77,40 @@ export function Booking({
     staff.some((s) => s.id === initial.staff) ? initial.staff! : "any",
   );
   const [date, setDate] = useState(
-    initial.date &&
-      initial.date >= today() &&
-      initial.date <= addDays(today(), 29)
+    initial.date && initial.date >= first && initial.date <= last
       ? initial.date
-      : today(),
+      : first,
   );
   const [selected, setSelected] = useState<number | null>(
     initial.time !== undefined ? Number(initial.time) : null,
   );
-  const [slots, setSlots] = useState<{ startMin: number }[]>([]);
+  const [slots, setSlots] = useState<Slot[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [closed, setClosed] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [refresh, setRefresh] = useState(0);
+  const strip = useRef<HTMLDivElement>(null);
+  const dateInput = useRef<HTMLInputElement>(null);
   const service = services.find((s) => s.id === serviceId);
+  const barber = staff.find((s) => s.id === staffId);
+  const days = useMemo(
+    () =>
+      Array.from(
+        { length: Math.max(1, windowDays) },
+        (_, i) => addDays(first, i),
+      ),
+    [first, windowDays],
+  );
   useEffect(() => {
     if (!serviceId) return;
     const controller = new AbortController();
-    fetch(
-      `/api/slots?${new URLSearchParams({ shopId, serviceId, staffId, date })}`,
-      { signal: controller.signal, cache: "no-store" },
-    )
-      .then(async (r) => {
-        const data = await r.json();
-        if (!r.ok) throw new Error(data.error);
-        return data;
-      })
+    fetchSlots({ shopId, serviceId, staffId, date }, controller.signal)
       .then((data) => {
         setSlots(data.slots);
         setClosed(data.closed);
-        setSelected((s) =>
-          data.slots.some((x: { startMin: number }) => x.startMin === s)
-            ? s
-            : null,
-        );
+        setSelected((s) => (data.slots.some((x) => x.startMin === s) ? s : null));
       })
       .catch((e) => {
         if (e.name !== "AbortError") {
@@ -82,23 +123,84 @@ export function Booking({
       });
     return () => controller.abort();
   }, [shopId, serviceId, staffId, date, refresh]);
+  // Hidrasyondan önce takvimden seçilmiş bir gün varsa onu benimse.
+  useEffect(() => {
+    const v = dateInput.current?.value;
+    if (v && v !== date && v >= first && v <= last) {
+      setLoading(true);
+      setSelected(null);
+      setDate(v);
+    }
+    // yalnızca ilk yüklemede
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Seçili günü şeridin görünür alanına kaydır, takvim alanını eşitle.
+  useEffect(() => {
+    if (dateInput.current && dateInput.current.value !== date)
+      dateInput.current.value = date;
+    strip.current
+      ?.querySelector<HTMLElement>(`[data-date="${date}"]`)
+      ?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+  }, [date]);
   function reset() {
     setSelected(null);
     setLoading(true);
     setError("");
     setSlots([]);
   }
+  function pickDate(d: string) {
+    if (d === date) return;
+    reset();
+    setDate(d);
+  }
+  async function findNext() {
+    setSearching(true);
+    setError("");
+    try {
+      for (let d = addDays(date, 1); d <= last; d = addDays(d, 1)) {
+        if (closedDays.includes(weekday(d))) continue;
+        const data = await fetchSlots({ shopId, serviceId, staffId, date: d });
+        if (data.slots.length) {
+          pickDate(d);
+          return;
+        }
+      }
+      setError("Önümüzdeki günlerde bu seçim için boş saat bulunamadı.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSearching(false);
+    }
+  }
   if (!services.length || !staff.length)
     return (
-      <aside className="booking-panel">
+      <aside className="booking-panel" id="rezervasyon">
+        <span className="empty-icon">
+          <CalendarDays size={20} />
+        </span>
         <h2>Randevular yakında.</h2>
-        <p>Bu işletme henüz ekibini veya hizmetlerini tamamlamadı.</p>
+        <p className="muted">
+          Bu işletme henüz ekibini veya hizmetlerini tamamlamadı.
+        </p>
       </aside>
     );
+  const done = [!!serviceId, true, !!date, selected !== null];
+  const grouped = periods
+    .map((p) => ({ ...p, slots: slots.filter((s) => p.test(s.startMin)) }))
+    .filter((p) => p.slots.length);
   return (
     <aside className="booking-panel" id="rezervasyon">
-      <span className="eyebrow">KENDİNE BİR SAAT AYIR</span>
-      <h2>Randevunu oluştur.</h2>
+      <div className="booking-head">
+        <div>
+          <span className="eyebrow">Kendine bir saat ayır</span>
+          <h2>Randevunu oluştur.</h2>
+        </div>
+        <div className="progress-dots" aria-hidden="true">
+          {done.map((d, i) => (
+            <i key={i} className={d ? "on" : ""} />
+          ))}
+        </div>
+      </div>
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -129,75 +231,152 @@ export function Booking({
           }
         }}
       >
-        <label>
-          01 · Hizmet seç
-          <select
-            value={serviceId}
-            onChange={(e) => {
-              reset();
-              setService(e.target.value);
-            }}
-          >
+        <fieldset className="booking-step">
+          <legend>Hizmet</legend>
+          <div className="option-list" role="radiogroup" aria-label="Hizmet">
             {services.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name} · {s.durationMinutes} dk · {money(s.price)}
-              </option>
+              <label
+                key={s.id}
+                className={`option ${serviceId === s.id ? "active" : ""}`}
+              >
+                <input
+                  type="radio"
+                  name="service"
+                  value={s.id}
+                  checked={serviceId === s.id}
+                  onChange={() => {
+                    reset();
+                    setService(s.id);
+                  }}
+                />
+                <span className="option-check">
+                  <Check size={12} strokeWidth={3} />
+                </span>
+                <span className="option-main">
+                  <strong>{s.name}</strong>
+                  <small>
+                    <Clock3 size={11} /> {formatDuration(s.durationMinutes)}
+                  </small>
+                </span>
+                <span className="option-price">{money(s.price)}</span>
+              </label>
             ))}
-          </select>
-        </label>
-        <label>
-          02 · Ustanı seç
-          <select
-            value={staffId}
-            onChange={(e) => {
-              reset();
-              setStaff(e.target.value);
-            }}
-          >
-            <option value="any">Fark etmez · İlk müsait usta</option>
-            {staff.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          03 · Gününü seç
-          <input
-            aria-label="Randevu tarihi"
-            type="date"
-            min={today()}
-            max={addDays(today(), 29)}
-            value={date}
-            onChange={(e) => {
-              if (e.target.value) {
-                reset();
-                setDate(e.target.value);
-              }
-            }}
-            required
-          />
-        </label>
-        <fieldset className="slot-field">
-          <legend>04 · Müsait saatler</legend>
+          </div>
+        </fieldset>
+        <fieldset className="booking-step">
+          <legend>Usta</legend>
+          <div className="staff-picker" role="radiogroup" aria-label="Usta">
+            {[{ id: "any", name: "Fark etmez", title: "İlk müsait", photo: null }, ...staff].map(
+              (s) => (
+                <label
+                  key={s.id}
+                  className={`staff-chip ${staffId === s.id ? "active" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="staff"
+                    value={s.id}
+                    checked={staffId === s.id}
+                    onChange={() => {
+                      reset();
+                      setStaff(s.id);
+                    }}
+                  />
+                  <span className="staff-face">
+                    {s.id === "any" ? (
+                      <Sparkles size={17} />
+                    ) : s.photo ? (
+                      <img src={s.photo} alt="" />
+                    ) : (
+                      s.name.slice(0, 1)
+                    )}
+                  </span>
+                  <span className="staff-name">
+                    {s.id === "any" ? s.name : s.name.split(" ").slice(-1)[0]}
+                  </span>
+                </label>
+              ),
+            )}
+          </div>
+        </fieldset>
+        <fieldset className="booking-step">
+          <legend>
+            Gün
+            <label className="date-native" title="Takvimden seç">
+              <CalendarSearch size={14} />
+              <span className="sr-only">Takvimden seç</span>
+              <input
+                ref={dateInput}
+                aria-label="Randevu tarihi"
+                type="date"
+                min={first}
+                max={last}
+                defaultValue={date}
+                onChange={(e) => {
+                  if (e.target.value) pickDate(e.target.value);
+                }}
+                required
+              />
+            </label>
+          </legend>
+          <div className="date-strip" ref={strip}>
+            {days.map((d) => {
+              const p = dayParts(d);
+              const off = closedDays.includes(weekday(d));
+              return (
+                <button
+                  type="button"
+                  key={d}
+                  data-date={d}
+                  className={`date-pill ${d === date ? "active" : ""}`}
+                  aria-pressed={d === date}
+                  aria-label={`${dateLabel(d)}${off ? ", kapalı" : ""}`}
+                  disabled={off}
+                  onClick={() => pickDate(d)}
+                >
+                  <small>{d === first ? "Bugün" : p.weekday}</small>
+                  <strong>{p.day}</strong>
+                  <small>{off ? "Kapalı" : p.month}</small>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+        <fieldset className="booking-step slot-field">
+          <legend>Saat</legend>
           {loading ? (
-            <p className="muted" role="status">
-              Saatler kontrol ediliyor…
-            </p>
+            <div className="slots skeleton-slots" role="status" aria-label="Saatler kontrol ediliyor">
+              {Array.from({ length: 8 }, (_, i) => (
+                <span className="skeleton" key={i} />
+              ))}
+            </div>
+          ) : closed || (!slots.length && !error) ? (
+            <div className="slot-empty">
+              <p>
+                {closed
+                  ? "İşletme bu gün kapalı."
+                  : "Bu seçim için boş saat kalmadı."}
+              </p>
+              <button
+                type="button"
+                className="button small tinted"
+                disabled={searching}
+                onClick={findNext}
+              >
+                {searching ? (
+                  <LoaderCircle size={14} className="spin" />
+                ) : (
+                  <CalendarSearch size={14} />
+                )}
+                {searching ? "Aranıyor…" : "İlk boş günü bul"}
+              </button>
+            </div>
           ) : (
-            <>
-              {closed ? (
-                <p className="notice">
-                  İşletme bu gün kapalı. Başka bir gün seçebilirsin.
-                </p>
-              ) : !slots.length && !error ? (
-                <p className="notice">
-                  Bu seçim için boş saat yok. Başka bir gün veya usta seç.
-                </p>
-              ) : (
+            grouped.map((g) => (
+              <div className="slot-group" key={g.label}>
+                <small>{g.label}</small>
                 <div className="slots">
-                  {slots.map((s) => (
+                  {g.slots.map((s) => (
                     <button
                       type="button"
                       className={selected === s.startMin ? "active" : ""}
@@ -209,26 +388,39 @@ export function Booking({
                     </button>
                   ))}
                 </div>
-              )}
-            </>
+              </div>
+            ))
           )}
         </fieldset>
         <Feedback error={error} />
         {selected !== null && service && (
           <div className="booking-summary">
-            <div>
-              <CalendarDays size={16} />
-              {dateLabel(date)} · {clock(selected)}
+            <div className="summary-time">
+              <strong>{clock(selected)}</strong>
+              <span>{dateLabel(date)}</span>
             </div>
-            <div>
-              <Clock3 size={16} />
-              {service.durationMinutes} dakika
-              <strong>{money(service.price)}</strong>
-            </div>
+            <dl>
+              <div>
+                <dt>
+                  <Clock3 size={13} /> {service.name}
+                </dt>
+                <dd>{formatDuration(service.durationMinutes)}</dd>
+              </div>
+              <div>
+                <dt>
+                  <User size={13} /> Usta
+                </dt>
+                <dd>{barber?.name ?? "İlk müsait usta"}</dd>
+              </div>
+              <div className="total">
+                <dt>Toplam</dt>
+                <dd>{money(service.price)}</dd>
+              </div>
+            </dl>
           </div>
         )}
         <button
-          className="button primary full"
+          className="button primary full large"
           disabled={
             busy ||
             loading ||
@@ -236,17 +428,17 @@ export function Booking({
             !slots.some((s) => s.startMin === selected)
           }
         >
+          {busy && <LoaderCircle size={16} className="spin" />}
           {busy
             ? "Randevu oluşturuluyor…"
             : loggedIn
               ? "Randevuyu onayla"
               : "Giriş yap ve devam et"}
-          <ArrowRight size={17} />
+          {!busy && <ArrowRight size={16} />}
         </button>
         <p className="booking-footnote">
-          <Check size={14} /> Rezervasyon ücretsizdir. Ödeme işletmede yapılır.
-          <br />
-          Günde 1 aktif randevu. Son 2 saate kadar iptal edebilirsin.
+          <Check size={13} /> Ücretsiz rezervasyon · Ödeme işletmede · 2 saat
+          öncesine kadar iptal
         </p>
       </form>
     </aside>

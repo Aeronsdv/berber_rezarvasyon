@@ -1,12 +1,17 @@
 import Link from "next/link";
 import {
-  ArrowUpRight,
   ArrowRight,
+  BellRing,
+  CalendarCheck2,
+  CalendarDays,
+  Check,
+  Clock3,
   MapPin,
   Scissors,
-  Clock3,
   ShieldCheck,
   Sparkles,
+  Star,
+  Users,
 } from "lucide-react";
 import { catalog } from "@/lib/catalog";
 import { ShopCard } from "@/components/shop-card";
@@ -17,25 +22,23 @@ export default async function Home() {
   const favorites = user
     ? await db.favorite.findMany({ where: { userId: user.id } })
     : [];
+  const openNow = shops.filter((s) => s.open).length;
   return (
     <>
       <section className="hero container">
-        <div className="hero-copy">
-          <span className="eyebrow">
-            <span className="tiny-line" /> BAKIMINA ZAMAN AYIR
-          </span>
+        <div className="hero-copy rise">
+          <span className="eyebrow">Bakımına zaman ayır</span>
           <h1>
             İyi bir kesim.
             <br />
             İyi bir <em>başlangıç.</em>
           </h1>
           <p>
-            Mahallenin ustasını keşfet, sana uyan saati seç.
-            <br className="desktop" /> Beklemek yok. Sadece sana ayrılan zaman
-            var.
+            Mahallenin ustasını keşfet, sana uyan saati seç. Beklemek yok;
+            sadece sana ayrılan zaman var.
           </p>
           <form className="hero-search" action="/kesfet">
-            <MapPin size={20} />
+            <MapPin size={17} />
             <label className="sr-only" htmlFor="hero-location">
               Şehir, ilçe veya berber adı
             </label>
@@ -43,140 +46,198 @@ export default async function Home() {
               id="hero-location"
               name="q"
               placeholder="Şehir, ilçe veya berber adı"
+              enterKeyHint="search"
             />
             <button className="button primary" type="submit">
-              Berber bul <ArrowUpRight size={18} />
+              Berber bul
             </button>
           </form>
           <div className="hero-reassurance">
             <span>
-              <ShieldCheck size={15} /> Ücretsiz rezervasyon
+              <ShieldCheck size={14} /> Ücretsiz rezervasyon
             </span>
             <span>
-              <Clock3 size={15} /> Sana uygun saatler
+              <Clock3 size={14} /> Anlık müsaitlik
             </span>
+            {openNow > 0 && (
+              <span>
+                <i className="green-dot" /> {openNow} berber şu an açık
+              </span>
+            )}
           </div>
         </div>
-        <div className="hero-art">
-          <div className="art-lines" />
-          <span className="art-top">USTALIK, DETAYLARDA SAKLI.</span>
-          <div className="scissors-emblem">
-            <Scissors strokeWidth={0.65} />
-            <span>THE ART OF GROOMING</span>
-          </div>
-          <div className="art-caption">
-            <span>
-              GELENEKTEN GELEN USTALIK
-              <br />
-              <strong>Bugünün ritmine uygun.</strong>
-            </span>
-            <span className="art-star">✳</span>
-          </div>
-          <div className="floating-note">
-            <span className="check-circle">✓</span>
-            <div>
-              <strong>Bir sonraki iyi görünümün</strong>
-              <small>bir randevu uzağında.</small>
+        <div className="hero-art" aria-hidden="true">
+          <div className="device">
+            <div className="device-card booking-preview">
+              <div className="row between">
+                <strong>Saat seç</strong>
+                <small className="muted">Yarın</small>
+              </div>
+              <div className="preview-slots">
+                {["10:00", "10:30", "11:15", "13:00", "14:30", "16:00"].map(
+                  (t, i) => (
+                    <span key={t} className={i === 4 ? "active" : ""}>
+                      {t}
+                    </span>
+                  ),
+                )}
+              </div>
+            </div>
+            <div className="device-card confirm-preview">
+              <span className="check-circle">
+                <Check size={16} strokeWidth={3} />
+              </span>
+              <div>
+                <strong>Randevun hazır</strong>
+                <small>Yarın 14:30 · Saç & sakal</small>
+              </div>
+            </div>
+            <div className="device-card staff-preview">
+              <span className="mini-avatar">A</span>
+              <div>
+                <strong>Usta Ali</strong>
+                <small>
+                  <Star size={10} fill="currentColor" /> 4,9 · 120 yorum
+                </small>
+              </div>
             </div>
           </div>
         </div>
       </section>
-      <div className="promise-strip">
-        <span>İYİ GÖRÜN. İYİ HİSSET.</span>
-        <i>✳</i>
-        <span>USTANI BUL.</span>
-        <i>✳</i>
-        <span>ZAMAN SANA KALSIN.</span>
-        <i>✳</i>
-        <span>İYİ GÖRÜN. İYİ HİSSET.</span>
+      <div className="promise-strip" aria-hidden="true">
+        <div className="marquee">
+          {Array.from({ length: 2 }, (_, k) => (
+            <span key={k}>
+              İYİ GÖRÜN. İYİ HİSSET. <i>✳</i> USTANI BUL. <i>✳</i> ZAMAN SANA
+              KALSIN. <i>✳</i> İYİ GÖRÜN. İYİ HİSSET. <i>✳</i> USTANI BUL.{" "}
+              <i>✳</i> ZAMAN SANA KALSIN. <i>✳</i>
+            </span>
+          ))}
+        </div>
       </div>
       <section className="container section">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">BİR SONRAKİ DURAĞIN</span>
+            <span className="eyebrow">Bir sonraki durağın</span>
             <h2>Ustanı keşfet.</h2>
-            <p>Tarzına ve programına uyan berberlerle tanış.</p>
           </div>
           <Link className="text-link" href="/kesfet">
-            Tüm berberler <ArrowRight size={18} />
+            Tümünü gör <ArrowRight size={15} />
           </Link>
         </div>
         {shops.length ? (
           <div className="shop-grid">
             {shops.slice(0, 3).map((shop) => (
-              <ShopCard
-                key={shop.id}
-                shop={shop}
-                loggedIn={!!user}
-                saved={favorites.some((f) => f.barbershopId === shop.id)}
-              />
+              <div className="reveal" key={shop.id}>
+                <ShopCard
+                  shop={shop}
+                  loggedIn={!!user}
+                  saved={favorites.some((f) => f.barbershopId === shop.id)}
+                />
+              </div>
             ))}
           </div>
         ) : (
-          <div className="empty bordered">
-            <Scissors size={36} />
+          <div className="empty">
+            <span className="empty-icon">
+              <Scissors size={22} />
+            </span>
             <h3>İlk ustalarımızı bekliyoruz.</h3>
             <p>İşletmeni ekle, müşterilerin seni burada keşfetsin.</p>
-            <Link className="button" href="/panel/kurulum">
-              Dükkânımı kaydet <ArrowUpRight size={16} />
+            <Link className="button primary" href="/panel/kurulum">
+              Dükkânımı kaydet
             </Link>
           </div>
         )}
       </section>
-      <section className="container steps-section">
-        <div>
-          <span className="eyebrow">ÜÇ ADIMDA, TAM ZAMANINDA</span>
-          <h2>
-            Randevu almak
-            <br />
-            bu kadar kolay.
-          </h2>
+      <section className="container section steps-section">
+        <div className="section-heading">
+          <div>
+            <span className="eyebrow">Üç adımda, tam zamanında</span>
+            <h2>Randevu almak bu kadar kolay.</h2>
+          </div>
         </div>
         <div className="steps">
           {[
             {
-              n: "01",
+              n: "1",
               icon: MapPin,
               title: "Ustanı keşfet",
               text: "Haritada yakındaki berberleri gör, hizmetleri ve yorumları incele.",
             },
             {
-              n: "02",
+              n: "2",
               icon: Scissors,
-              title: "Kendine zaman ayır",
-              text: "Hizmetini, ustanı ve takvimindeki en uygun saati seç.",
+              title: "Saatini seç",
+              text: "Hizmetini, ustanı ve takvimindeki en uygun boş saati seç.",
             },
             {
-              n: "03",
+              n: "3",
               icon: Sparkles,
-              title: "Yeni görünümüne merhaba",
-              text: "Randevu saatinde koltuğun hazır. Gerisi ustanın işi.",
+              title: "Koltuğun hazır",
+              text: "Takvimine ekle, yol tarifini al. Gerisi ustanın işi.",
             },
           ].map((s) => (
-            <div className="step" key={s.n}>
-              <div className="row between">
-                <s.icon size={24} />
-                <span>{s.n}</span>
-              </div>
+            <div className="step reveal" key={s.n}>
+              <span className="step-icon">
+                <s.icon size={18} />
+              </span>
               <h3>{s.title}</h3>
               <p>{s.text}</p>
+              <span className="step-n">{s.n}</span>
             </div>
           ))}
         </div>
       </section>
-      <section className="container owner-banner">
-        <div>
-          <span className="eyebrow">KOLTUĞUN HAZIR. PEKİ TAKVİMİN?</span>
-          <h2>
-            Sen sanatına odaklan.
-            <br />
-            Randevuların bize emanet.
-          </h2>
-          <p>Dükkânını, ekibini ve randevularını tek yerden yönet.</p>
+      <section className="container section">
+        <div className="owner-banner reveal">
+          <div>
+            <span className="eyebrow">Koltuğun hazır. Peki takvimin?</span>
+            <h2>
+              Sen sanatına odaklan.
+              <br />
+              Randevuların bize emanet.
+            </h2>
+            <ul className="feature-list">
+              <li>
+                <CalendarDays size={15} /> Canlı, usta bazlı günlük takvim
+              </li>
+              <li>
+                <Users size={15} /> Ekip, mola ve özel çalışma saatleri
+              </li>
+              <li>
+                <BellRing size={15} /> Otomatik hatırlatmalar
+              </li>
+              <li>
+                <CalendarCheck2 size={15} /> Gelmeyen müşteri kontrolü
+              </li>
+            </ul>
+            <Link className="button primary" href="/panel/kurulum">
+              İşletmeni USTA’ya taşı <ArrowRight size={15} />
+            </Link>
+          </div>
+          <div className="owner-preview" aria-hidden="true">
+            <div className="op-head">
+              <strong>Bugün</strong>
+              <span className="live-indicator">
+                <i /> Canlı
+              </span>
+            </div>
+            {[
+              ["09:30", "Mert K.", "Saç kesimi", "confirmed"],
+              ["10:15", "Emre D.", "Sakal tıraşı", "completed"],
+              ["11:00", "Can Y.", "Saç & sakal", "confirmed"],
+            ].map(([t, n, s, st]) => (
+              <div className={`op-row status-${st}`} key={t}>
+                <b>{t}</b>
+                <span>
+                  {n}
+                  <small>{s}</small>
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-        <Link className="button primary" href="/panel/kurulum">
-          İşletmeni USTA’ya taşı <ArrowUpRight size={18} />
-        </Link>
       </section>
     </>
   );

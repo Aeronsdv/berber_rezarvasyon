@@ -58,6 +58,35 @@ export function dateLabel(date: string) {
     timeZone: "UTC",
   }).format(new Date(`${date}T12:00:00Z`));
 }
+export function dayParts(date: string) {
+  const d = new Date(`${date}T12:00:00Z`);
+  const f = (o: Intl.DateTimeFormatOptions) =>
+    new Intl.DateTimeFormat("tr-TR", { timeZone: "UTC", ...o }).format(d);
+  return {
+    weekday: f({ weekday: "short" }),
+    day: d.getUTCDate(),
+    month: f({ month: "short" }),
+  };
+}
+export function daysBetween(from: string, to: string) {
+  return Math.round(
+    (Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) /
+      86400000,
+  );
+}
+export function relativeDay(date: string, from = today()) {
+  const n = daysBetween(from, date);
+  if (n === 0) return "Bugün";
+  if (n === 1) return "Yarın";
+  if (n === -1) return "Dün";
+  if (n > 1 && n < 7) return `${n} gün sonra`;
+  return dateLabel(date);
+}
+export function duration(min: number) {
+  if (min < 60) return `${min} dk`;
+  const h = Math.floor(min / 60);
+  return min % 60 ? `${h} sa ${min % 60} dk` : `${h} sa`;
+}
 export function distanceKm(
   a: { latitude: number; longitude: number },
   b: { latitude: number; longitude: number },

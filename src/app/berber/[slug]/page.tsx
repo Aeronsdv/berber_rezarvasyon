@@ -1,12 +1,31 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { MapPin, Phone, ArrowLeft, Scissors, Star, Clock3 } from "lucide-react";
+import {
+  ArrowRight,
+  ChevronLeft,
+  Clock3,
+  MapPin,
+  Navigation,
+  Phone,
+  Scissors,
+  Star,
+  Users,
+} from "lucide-react";
 import { db } from "@/lib/db";
 import { currentUser } from "@/lib/session";
 import { Booking } from "@/components/booking";
-import { FavoriteButton } from "@/components/ui";
-import { DAYS, WEEK, clock, money } from "@/lib/time";
+import { FavoriteButton, ShareButton } from "@/components/ui";
+import {
+  DAYS,
+  WEEK,
+  clock,
+  duration,
+  instant,
+  money,
+  today,
+  weekday,
+} from "@/lib/time";
 export async function generateMetadata({
   params,
 }: {
@@ -50,7 +69,7 @@ export default async function ShopPage({
     searchParams,
   ]);
   if (!shop) notFound();
-  const [favorite, ratings] = await Promise.all([
+  const [favorite, ratings, distribution] = await Promise.all([
     user
       ? db.favorite.findUnique({
           where: {
@@ -62,103 +81,156 @@ export default async function ShopPage({
       where: { barbershopId: shop.id },
       _avg: { rating: true },
     }),
+    db.review.groupBy({
+      by: ["rating"],
+      where: { barbershopId: shop.id },
+      _count: true,
+    }),
   ]);
+  const now = new Date();
+  const day = weekday(today(now));
+  const todayHours = shop.hours.find((h) => h.dayOfWeek === day);
+  const isOpen =
+    !!todayHours &&
+    !todayHours.isClosed &&
+    now >= instant(today(now), todayHours.openMin) &&
+    now < instant(today(now), todayHours.closeMin);
+  const opensLater =
+    !!todayHours &&
+    !todayHours.isClosed &&
+    now < instant(today(now), todayHours.openMin);
+  const openLabel = isOpen
+    ? `Açık · Kapanış ${clock(todayHours!.closeMin)}`
+    : opensLater
+      ? `Kapalı · Açılış ${clock(todayHours!.openMin)}`
+      : "Şu an kapalı";
+  const avg = ratings._avg.rating;
+  const total = shop._count.reviews;
+  const minPrice = shop.services[0]?.price;
+  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${shop.latitude},${shop.longitude}`;
   return (
-    <section className="container section">
+    <section className="container page shop-page">
       <Link className="back-link" href="/kesfet">
-        <ArrowLeft size={15} /> Berberleri keşfet
+        <ChevronLeft size={16} /> Keşfet
       </Link>
-      <div className="detail-cover">
+      <div className={`detail-cover rise ${shop.coverImage ? "" : "no-image"}`}>
         {shop.coverImage ? (
           <img src={shop.coverImage} alt={`${shop.name} salonu`} />
         ) : (
           <div className="detail-placeholder">
-            <Scissors size={100} strokeWidth={0.8} />
+            <Scissors size={64} strokeWidth={1} />
           </div>
         )}
         <div className="detail-cover-shade" />
-        <span className="detail-cover-label">USTA. SEÇKİSİ</span>
+        <div className="cover-actions">
+          <ShareButton title={shop.name} path={`/berber/${shop.slug}`} />
+          <FavoriteButton
+            shopId={shop.id}
+            saved={!!favorite}
+            loggedIn={!!user}
+          />
+        </div>
       </div>
       <div className="detail-layout">
-        <div>
-          <div className="row between">
+        <div className="detail-main">
+          <header className="detail-header">
             <span className="eyebrow">
               {shop.district} · {shop.city}
             </span>
-            <FavoriteButton
-              shopId={shop.id}
-              saved={!!favorite}
-              loggedIn={!!user}
-            />
-          </div>
-          <h1 className="page-title">{shop.name}</h1>
-          <div className="row wrap muted">
-            <span className="rating">
-              <Star size={16} fill="currentColor" />
-              {ratings._avg.rating?.toFixed(1) ?? "Henüz puan yok"}{" "}
-              <small>({shop._count.reviews} değerlendirme)</small>
-            </span>
-            <span>·</span>
-            <span>{shop.staff.length} usta</span>
-          </div>
-          <p className="detail-description">
-            {shop.description || "Ustanı seç, kendine zaman ayır."}
-          </p>
+            <h1 className="page-title">{shop.name}</h1>
+            <div className="fact-row">
+              <span className={`pill ${isOpen ? "open" : ""}`}>
+                <i />
+                {openLabel}
+              </span>
+              <span className="fact">
+                <Star size={13} fill="currentColor" className="star" />
+                {avg ? avg.toFixed(1) : "Yeni"}
+                <small>({total})</small>
+              </span>
+              <span className="fact">
+                <Users size={13} /> {shop.staff.length} usta
+              </span>
+            </div>
+          </header>
+          {shop.description && (
+            <p className="detail-description">{shop.description}</p>
+          )}
           <div className="contact-row">
-            <a
-              href={`https://www.openstreetmap.org/?mlat=${shop.latitude}&mlon=${shop.longitude}#map=17/${shop.latitude}/${shop.longitude}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <MapPin size={18} />
-              {shop.address}
+            <a href={mapsUrl} target="_blank" rel="noreferrer">
+              <span className="contact-icon">
+                <Navigation size={15} />
+              </span>
+              <span>
+                <strong>Yol tarifi</strong>
+                <small>{shop.address}</small>
+              </span>
             </a>
             <a href={`tel:${shop.phone.replace(/[^+\d]/g, "")}`}>
-              <Phone size={17} />
-              {shop.phone}
+              <span className="contact-icon">
+                <Phone size={15} />
+              </span>
+              <span>
+                <strong>Ara</strong>
+                <small>{shop.phone}</small>
+              </span>
             </a>
           </div>
           <section className="detail-section">
-            <h2>Biraz bakım, çok iyi his.</h2>
+            <h2>Hizmetler</h2>
             <div className="service-list">
               {shop.services.map((s) => (
-                <div key={s.id}>
-                  <div>
-                    <h3>{s.name}</h3>
-                    <span className="muted row">
-                      <Clock3 size={13} />
-                      {s.durationMinutes} dakika
-                    </span>
-                  </div>
-                  <strong>{money(s.price.toString())}</strong>
-                </div>
+                <Link
+                  key={s.id}
+                  href={`/berber/${shop.slug}?service=${s.id}#rezervasyon`}
+                  scroll={false}
+                  className="service-row"
+                >
+                  <span>
+                    <strong>{s.name}</strong>
+                    <small>
+                      <Clock3 size={11} /> {duration(s.durationMinutes)}
+                    </small>
+                  </span>
+                  <span className="service-price">
+                    {money(s.price.toString())}
+                    <ArrowRight size={14} />
+                  </span>
+                </Link>
               ))}
             </div>
           </section>
-          <section className="detail-section">
-            <h2>İşinin ustaları.</h2>
-            <div className="staff-list">
-              {shop.staff.map((s) => (
-                <div key={s.id}>
-                  {s.photo ? (
-                    <img src={s.photo} alt={s.name} />
-                  ) : (
-                    <span className="staff-avatar">{s.name.slice(0, 1)}</span>
-                  )}
-                  <h3>{s.name}</h3>
-                  <p>{s.title}</p>
-                </div>
-              ))}
-            </div>
-          </section>
+          {shop.staff.length > 0 && (
+            <section className="detail-section">
+              <h2>İşinin ustaları</h2>
+              <div className="staff-list">
+                {shop.staff.map((s) => (
+                  <Link
+                    key={s.id}
+                    href={`/berber/${shop.slug}?staff=${s.id}#rezervasyon`}
+                    scroll={false}
+                    className="staff-card"
+                  >
+                    {s.photo ? (
+                      <img src={s.photo} alt={s.name} />
+                    ) : (
+                      <span className="staff-avatar">{s.name.slice(0, 1)}</span>
+                    )}
+                    <strong>{s.name}</strong>
+                    <small>{s.title}</small>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
           <section className="detail-section">
             <h2>Çalışma saatleri</h2>
             <div className="hours-display">
-              {WEEK.map((day) => {
-                const h = shop.hours.find((h) => h.dayOfWeek === day);
+              {WEEK.map((d) => {
+                const h = shop.hours.find((h) => h.dayOfWeek === d);
                 return (
-                  <div key={day}>
-                    <span>{DAYS[day]}</span>
+                  <div key={d} className={d === day ? "today" : ""}>
+                    <span>{DAYS[d]}</span>
                     <strong>
                       {!h || h.isClosed
                         ? "Kapalı"
@@ -168,33 +240,76 @@ export default async function ShopPage({
                 );
               })}
             </div>
+            <a
+              className="text-link small-link"
+              href={`https://www.openstreetmap.org/?mlat=${shop.latitude}&mlon=${shop.longitude}#map=17/${shop.latitude}/${shop.longitude}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <MapPin size={13} /> Haritada gör
+            </a>
           </section>
           <section className="detail-section">
-            <h2>Ustasını bulanlar.</h2>
-            <p className="muted">
+            <h2>Değerlendirmeler</h2>
+            {total > 0 && (
+              <div className="rating-summary">
+                <div className="rating-big">
+                  <strong>{avg?.toFixed(1)}</strong>
+                  <span className="stars-row">
+                    {"★".repeat(Math.round(avg ?? 0))}
+                    <span className="dim">
+                      {"★".repeat(5 - Math.round(avg ?? 0))}
+                    </span>
+                  </span>
+                  <small>{total} değerlendirme</small>
+                </div>
+                <div className="rating-bars">
+                  {[5, 4, 3, 2, 1].map((n) => {
+                    const c =
+                      distribution.find((d) => d.rating === n)?._count ?? 0;
+                    return (
+                      <div key={n}>
+                        <span>{n}</span>
+                        <i>
+                          <b style={{ width: `${(c / total) * 100}%` }} />
+                        </i>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <p className="muted small">
               Yalnızca tamamlanmış randevulardan doğrulanmış yorumlar.
             </p>
             {shop.reviews.length ? (
-              shop.reviews.map((r) => (
-                <article className="review" key={r.id}>
-                  <div className="row between">
-                    <strong>
-                      {r.customer.name?.split(" ")[0] ?? "Müşteri"}
-                    </strong>
-                    <span className="gold">
-                      {"★".repeat(r.rating)}
-                      {"☆".repeat(5 - r.rating)}
-                    </span>
-                  </div>
-                  <p>{r.comment}</p>
-                  <small className="muted">
-                    Doğrulanmış randevu ·{" "}
-                    {r.createdAt.toLocaleDateString("tr-TR", {
-                      timeZone: "Europe/Istanbul",
-                    })}
-                  </small>
-                </article>
-              ))
+              <div className="review-list">
+                {shop.reviews.map((r) => (
+                  <article className="review" key={r.id}>
+                    <div className="row between">
+                      <span className="row">
+                        <span className="mini-avatar">
+                          {(r.customer.name ?? "M").slice(0, 1)}
+                        </span>
+                        <strong>
+                          {r.customer.name?.split(" ")[0] ?? "Müşteri"}
+                        </strong>
+                      </span>
+                      <span className="stars-row small">
+                        {"★".repeat(r.rating)}
+                        <span className="dim">{"★".repeat(5 - r.rating)}</span>
+                      </span>
+                    </div>
+                    <p>{r.comment}</p>
+                    <small className="muted">
+                      Doğrulanmış randevu ·{" "}
+                      {r.createdAt.toLocaleDateString("tr-TR", {
+                        timeZone: "Europe/Istanbul",
+                      })}
+                    </small>
+                  </article>
+                ))}
+              </div>
             ) : (
               <p className="notice">
                 Henüz yorum yok. İlk deneyimi sen paylaşabilirsin.
@@ -203,9 +318,15 @@ export default async function ShopPage({
           </section>
         </div>
         <Booking
+          key={`${initial.service ?? ""}-${initial.staff ?? ""}`}
           shopId={shop.id}
           slug={shop.slug}
-          staff={shop.staff.map((s) => ({ id: s.id, name: s.name }))}
+          staff={shop.staff.map((s) => ({
+            id: s.id,
+            name: s.name,
+            title: s.title,
+            photo: s.photo,
+          }))}
           services={shop.services.map((s) => ({
             id: s.id,
             name: s.name,
@@ -214,8 +335,24 @@ export default async function ShopPage({
           }))}
           loggedIn={!!user}
           initial={initial}
+          closedDays={WEEK.filter((d) => {
+            const h = shop.hours.find((h) => h.dayOfWeek === d);
+            return !h || h.isClosed;
+          })}
+          windowDays={shop.bookingWindowDays}
         />
       </div>
+      {shop.services.length > 0 && shop.staff.length > 0 && (
+        <div className="mobile-cta">
+          <div>
+            <small>Başlangıç</small>
+            <strong>{minPrice ? money(minPrice.toString()) : "—"}</strong>
+          </div>
+          <a className="button primary" href="#rezervasyon">
+            Randevu al <ArrowRight size={15} />
+          </a>
+        </div>
+      )}
     </section>
   );
 }

@@ -17,10 +17,12 @@ export default async function Explore({
     ? await db.favorite.findMany({ where: { userId: user.id } })
     : [];
   return (
-    <section className="container section">
-      <span className="eyebrow">TARZININ YENİ ADRESİ</span>
-      <h1 className="page-title">İyi ustalar, yakınında.</h1>
-      <p className="lead">Bir koltuktan fazlası. Kendine ayırdığın zaman.</p>
+    <section className="container page">
+      <header className="page-head">
+        <span className="eyebrow">Tarzının yeni adresi</span>
+        <h1 className="page-title">İyi ustalar, yakınında.</h1>
+        <p className="lead">Bir koltuktan fazlası. Kendine ayırdığın zaman.</p>
+      </header>
       <Discovery
         shops={shops}
         favorites={favorites.map((f) => f.barbershopId)}

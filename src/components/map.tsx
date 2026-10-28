@@ -17,6 +17,12 @@ const pin = L.divIcon({
   iconSize: [38, 44],
   iconAnchor: [19, 42],
 });
+const you = L.divIcon({
+  className: "you-pin",
+  html: "<span></span>",
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
 type Point = { latitude: number; longitude: number };
 type MapShop = Point & {
   id: string;
@@ -93,6 +99,13 @@ export default function Map({
               onChange?.({ latitude: p.lat, longitude: p.lng });
             },
           }}
+        />
+      )}
+      {center && !value && (
+        <Marker
+          icon={you}
+          position={[center.latitude, center.longitude]}
+          interactive={false}
         />
       )}
       {onChange && <ClickPin onChange={onChange} />}

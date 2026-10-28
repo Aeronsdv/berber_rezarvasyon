@@ -1,7 +1,8 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Feedback, request, Submit } from "./ui";
+import { CalendarPlus, Check, Star, UserX, X } from "lucide-react";
+import { Feedback, request, StarInput, Submit } from "./ui";
 export function AppointmentActions({
   id,
   owner = false,
@@ -42,39 +43,48 @@ export function AppointmentActions({
       setBusy(false);
     }
   }
+  if (!(owner || canCancel || reviewable)) return null;
   return (
     <div className="appointment-actions">
-      <div className="row wrap">
-        {owner && past && (
-          <>
+      {!mode && (
+        <div className="row wrap">
+          {owner && past && (
+            <>
+              <button
+                className="button small success"
+                onClick={() => setMode("COMPLETED")}
+              >
+                <Check size={14} /> Tamamlandı
+              </button>
+              <button
+                className="button small danger"
+                onClick={() => setMode("NO_SHOW")}
+              >
+                <UserX size={14} /> Gelmedi
+              </button>
+            </>
+          )}
+          {reviewable && (
             <button
-              className="button small"
-              onClick={() => setMode("COMPLETED")}
+              className="button small tinted"
+              onClick={() => setMode("REVIEW")}
             >
-              Tamamlandı
+              <Star size={14} /> Deneyimini değerlendir
             </button>
+          )}
+          {(owner || canCancel) && (
             <button
-              className="button small danger"
-              onClick={() => setMode("NO_SHOW")}
+              className="text-button danger"
+              onClick={() => setMode("CANCELLED")}
             >
-              Gelmedi
+              Randevuyu iptal et
             </button>
-          </>
-        )}
-        {(owner || canCancel) && (
-          <button className="text-button" onClick={() => setMode("CANCELLED")}>
-            Randevuyu iptal et
-          </button>
-        )}
-        {reviewable && (
-          <button className="button small" onClick={() => setMode("REVIEW")}>
-            Deneyimini değerlendir
-          </button>
-        )}
-      </div>
+          )}
+        </div>
+      )}
       {mode && (
         <form
-          className="inline-form"
+          className={`inline-form ${mode === "REVIEW" ? "" : "confirm"}`}
           onSubmit={async (e) => {
             e.preventDefault();
             const form = new FormData(e.currentTarget);
@@ -97,18 +107,31 @@ export function AppointmentActions({
             } else await change(mode, form);
           }}
         >
+          <div className="inline-form-head">
+            <strong>
+              {mode === "REVIEW"
+                ? "Deneyimin nasıldı?"
+                : mode === "COMPLETED"
+                  ? "Randevu tamamlandı mı?"
+                  : mode === "NO_SHOW"
+                    ? "Müşteri gelmedi mi?"
+                    : "Randevu iptal edilsin mi?"}
+            </strong>
+            <button
+              type="button"
+              className="icon-button plain"
+              aria-label="Kapat"
+              onClick={() => {
+                setMode("");
+                setError("");
+              }}
+            >
+              <X size={15} />
+            </button>
+          </div>
           {mode === "REVIEW" ? (
             <>
-              <label>
-                Puanın
-                <select name="rating">
-                  {[5, 4, 3, 2, 1].map((n) => (
-                    <option key={n} value={n}>
-                      {n} yıldız
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <StarInput />
               <label>
                 Yorumun
                 <textarea
@@ -116,22 +139,28 @@ export function AppointmentActions({
                   required
                   minLength={3}
                   maxLength={1000}
+                  rows={3}
+                  placeholder="Usta, hizmet, ortam…"
                 />
               </label>
             </>
           ) : (
             <>
-              <p>
+              <p className="muted small">
                 {mode === "COMPLETED"
-                  ? "Randevuyu tamamlandı olarak işaretle."
+                  ? "Randevu tamamlandı olarak işaretlenecek."
                   : mode === "NO_SHOW"
                     ? "Müşteri gelmedi olarak işaretlenecek."
-                    : "Randevun iptal edilecek ve saat yeniden açılacak."}
+                    : "Randevu iptal edilecek ve saat yeniden açılacak."}
               </p>
               {mode !== "COMPLETED" && (
                 <label>
                   {mode === "CANCELLED" ? "İptal nedeni" : "Açıklama"}
-                  <input name="reason" maxLength={500} />
+                  <input
+                    name="reason"
+                    maxLength={500}
+                    placeholder="İsteğe bağlı"
+                  />
                 </label>
               )}
               {mode === "NO_SHOW" && (
@@ -149,10 +178,16 @@ export function AppointmentActions({
             </>
           )}
           <div className="row">
-            <Submit busy={busy}>Onayla</Submit>
+            <Submit
+              busy={busy}
+              busyText="İşleniyor…"
+              className={mode === "CANCELLED" || mode === "NO_SHOW" ? "destructive" : ""}
+            >
+              Onayla
+            </Submit>
             <button
               type="button"
-              className="text-button"
+              className="button"
               disabled={busy}
               onClick={() => {
                 setMode("");
@@ -166,6 +201,61 @@ export function AppointmentActions({
       )}
       <Feedback error={error} />
     </div>
+  );
+}
+export function AddToCalendar({
+  title,
+  start,
+  end,
+  location,
+  description,
+}: {
+  title: string;
+  start: string;
+  end: string;
+  location: string;
+  description: string;
+}) {
+  return (
+    <button
+      type="button"
+      className="button small"
+      onClick={() => {
+        const stamp = (iso: string) =>
+          new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+        const esc = (s: string) => s.replace(/[\\,;]/g, (c) => `\\${c}`).replace(/\n/g, "\\n");
+        const ics = [
+          "BEGIN:VCALENDAR",
+          "VERSION:2.0",
+          "PRODID:-//USTA//Randevu//TR",
+          "BEGIN:VEVENT",
+          `UID:${stamp(start)}-${Math.random().toString(36).slice(2)}@usta`,
+          `DTSTAMP:${stamp(new Date().toISOString())}`,
+          `DTSTART:${stamp(start)}`,
+          `DTEND:${stamp(end)}`,
+          `SUMMARY:${esc(title)}`,
+          `LOCATION:${esc(location)}`,
+          `DESCRIPTION:${esc(description)}`,
+          "BEGIN:VALARM",
+          "TRIGGER:-PT1H",
+          "ACTION:DISPLAY",
+          "DESCRIPTION:Randevun 1 saat sonra",
+          "END:VALARM",
+          "END:VEVENT",
+          "END:VCALENDAR",
+        ].join("\r\n");
+        const url = URL.createObjectURL(
+          new Blob([ics], { type: "text/calendar;charset=utf-8" }),
+        );
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "usta-randevu.ics";
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }}
+    >
+      <CalendarPlus size={14} /> Takvime ekle
+    </button>
   );
 }
 export function ProfilePhone({ phone }: { phone: string | null }) {
@@ -198,6 +288,7 @@ export function ProfilePhone({ phone }: { phone: string | null }) {
           name="phone"
           defaultValue={phone ?? ""}
           placeholder="+90 5xx xxx xx xx"
+          autoComplete="tel"
           required
         />
       </label>
